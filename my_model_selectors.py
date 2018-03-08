@@ -100,10 +100,10 @@ class SelectorBIC(ModelSelector):
         # Avoid any possible errors
         assert len(scores) == len(models)
 
-        if len(scores) > 2:
+        if len(scores) > 1:
             best_model = models[np.argmin(scores)]
             return best_model
-        return trained_models.pop()
+        return None
 
 class SelectorDIC(ModelSelector):
     ''' select best model based on Discriminative Information Criterion
@@ -147,10 +147,10 @@ class SelectorDIC(ModelSelector):
         
         assert len(models) == len(score_dics)
         
-        if len(score_dics) > 2:
+        if len(score_dics) > 1:
             best_model = models[np.argmin(score_dics)]
             return best_model
-        return trained_models.pop()
+        return None
 
 class SelectorCV(ModelSelector):
     ''' 
@@ -193,8 +193,8 @@ class SelectorCV(ModelSelector):
         assert len(trained_models) == len(log_likelihoods)
         # Get the means for all the log_likelihoods
         # From the means get the best one
-        if len(log_likelihoods) > 2:
+        if len(log_likelihoods) > 1:
             best_one = np.argmax(log_likelihoods)
             # Get the best trained model
             return trained_models[best_one]
-        return trained_models.pop()
+        return None
