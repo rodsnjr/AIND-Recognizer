@@ -48,12 +48,6 @@ class ModelSelector(object):
             if self.verbose:
                 print("failure on {} with {} states".format(self.this_word, num_states))
             return None
-    
-    def __train_score__(self, num_states=1):
-        hmm_model = self.base_model(num_states)
-        log_likelihood = hmm_model.score(self.X, self.lengths)
-
-        return hmm_model, log_likelihood
 
 class SelectorConstant(ModelSelector):
     """ select the model with value self.n_constant
@@ -75,6 +69,11 @@ class SelectorBIC(ModelSelector):
     http://www2.imm.dtu.dk/courses/02433/doc/ch6_slides.pdf
     Bayesian information criteria: BIC = -2 * logL + p * logN
     """
+    def __train_score(self, num_states=1):
+        hmm_model = self.base_model(num_states)
+        log_likelihood = hmm_model.score(self.X, self.lengths)
+
+        return hmm_model, log_likelihood
         
     def score_bic(self, num_states, log_likelihood):
         num_data_points = sum(self.lengths)
@@ -93,18 +92,18 @@ class SelectorBIC(ModelSelector):
 
         for num_states in range(self.min_n_components, self.max_n_components + 1):
             try:
-                hmm_model, log_likelihood = self.__train_score__(num_states)
+                hmm_model, log_likelihood = self.__train_score(num_states)
                 scores.append(self.score_bic(num_states, log_likelihood))
                 models.append(hmm_model)
             except Exception as e:
-                print('Error on Training %s ' % e)
+                pass
         # Avoid any possible errors
         assert len(scores) == len(models)
 
         if len(scores) > 2:
             best_model = models[np.argmin(scores)]
             return best_model
-        return None
+        return trained_models.pop()
 
 class SelectorDIC(ModelSelector):
     ''' select best model based on Discriminative Information Criterion
@@ -115,6 +114,12 @@ class SelectorDIC(ModelSelector):
     https://pdfs.semanticscholar.org/ed3d/7c4a5f607201f3848d4c02dd9ba17c791fc2.pdf
     DIC = log(P(X(i)) - 1/(M-1)SUM(log(P(X(all but i))
     '''
+    def __train_score(self, num_states=1):
+        hmm_model = self.base_model(num_states)
+        log_likelihood = hmm_model.score(self.X, self.lengths)
+
+        return hmm_model, log_likelihood
+
     def get_other_words(self):
         other_words = []
         for word in self.words:
@@ -133,31 +138,36 @@ class SelectorDIC(ModelSelector):
         models, score_dics = [], []
         for num_states in range(self.min_n_components, self.max_n_components + 1):
             try:
-                model, log_lh = self.__train_score__(num_states)
+                model, log_lh = self.__train_score(num_states)
                 score_dic = log_lh - np.mean(self.log_lh_ow(model, other_words))
                 score_dics.append(score_dic)
                 models.append(model)
             except Exception as e:
-                print('Error on Training %s ' % e)
+                pass
         
         assert len(models) == len(score_dics)
         
         if len(score_dics) > 2:
             best_model = models[np.argmin(score_dics)]
             return best_model
-        return None
+        return trained_models.pop()
 
 class SelectorCV(ModelSelector):
     ''' 
     select best model based on average log Likelihood of cross-validation folds
     '''
+    def __train_score(self, num_states=1):
+        hmm_model = self.base_model(num_states)
+        log_likelihood = hmm_model.score(self.X, self.lengths)
+
+        return hmm_model, log_likelihood
     
     def __score_kf(self, num_states):
         # Return a generator for each one of the splits
         for train_index, test_index in self.kf.split(self.sequences):
             self.X, self.lengths = combine_sequences(train_index, self.sequences)
             X_test, lengths_test = combine_sequences(test_index, self.sequences)
-            yield self.__train_score__()
+            yield self.__train_score(num_states)
 
     def select(self, k=3):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -173,11 +183,12 @@ class SelectorCV(ModelSelector):
                         trained_models.append(model)
                         log_likelihoods.append(log_lh)
                 else: # Dont't use KF
-                    hmm_model, log_likelihood = self.__train_score__(num_states)
+                    hmm_model, log_likelihood = self.__train_score(num_states)
                     log_likelihoods.append(log_likelihood)
                     trained_models.append(hmm_model)
             except Exception as e:
-                print('Error in training %' % e)
+                # print('Error in training %s' % e)
+                pass
         
         assert len(trained_models) == len(log_likelihoods)
         # Get the means for all the log_likelihoods
@@ -186,4 +197,4 @@ class SelectorCV(ModelSelector):
             best_one = np.argmax(log_likelihoods)
             # Get the best trained model
             return trained_models[best_one]
-        return None
+        return trained_models.pop()
